@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Dynamic Rhythm Game</title>
+    <style>
+        /* =========================================
+           DUOLINGO THEME & VARIABLES
+           ========================================= */
+        :root {
+            --bg-main: #ffffff;
+            --bg-grid: #f0f0f0;
+            --text-dark: #3c3c3c;
+            
+            /* Lane Colors */
+            --c0: #1CB0F6; --c0-d: #1899D6; /* Blue / Left */
+            --c1: #58CC02; --c1-d: #58A700; /* Green / Down */
+            --c2: #FFC800; --c2-d: #D8A900; /* Yellow / Up */
+            --c3: #FF4B4B; --c3-d: #D63838; /* Red / Right */
+            
+            --note-size: 70px;
+            --hit-zone: 15%; /* Position from bottom */
+            font-family: "Nunito", "Segoe UI", sans-serif;
+        }
+
+        /* Dark Mode Variables */
+        body.dark-mode {
+            --bg-main: #121212;
+            --bg-grid: #2a2a2a;
+            --text-dark: #f0f0f0;
+        }
+
+        @media (max-width: 600px) { :root { --note-size: 65px; } }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; outline: none; }
+        
+        body {
+            background-color: var(--bg-main); color: var(--text-dark);
+            overflow: hidden; width: 100vw; height: 100vh;
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        /* Background Grid */
+        #bg-grid {
+            position: absolute; top: 0; left: 0; width: 200%; height: 200%;
+            background-image: linear-gradient(var(--bg-grid) 2px, transparent 2px), linear-gradient(90deg, var(--bg-grid) 2px, transparent 2px);
+            background-size: 50px 50px; z-index: 0; opacity: 0.6;
+            animation: moveGrid 3s linear infinite; pointer-events: none;
+            transition: background-image 0.3s;
+        }
+        @keyframes moveGrid { 0% { transform: translateY(-50px); } 100% { transform: translateY(0); } }
+
+        #vfx-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 15; pointer-events: none; }
+
+        .screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: none; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 20; background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(5px);
+            transition: background 0.3s;
+        }
+        body.dark-mode .screen { background: rgba(18, 18, 18, 0.9); }
+        .screen.active { display: flex; }
+
+        /* UI Cards */
+        .card {
+            background: white; border: 4px solid #E5E5E5; border-bottom: 8px solid #E5E5E5;
+            border-radius: 24px; padding: 30px; text-align: center; width: 90%; max-width: 400px;
+            transition: background 0.3s, border-color 0.3s;
+        }
+        body.dark-mode .card { background: #1e1e1e; border-color: #333; border-bottom-color: #333; }
+
+        .btn-3d {
+            background-color: var(--c0); color: white; border: none; border-radius: 16px;
+            border-bottom: 5px solid var(--c0-d); padding: 15px; font-size: 20px; font-weight: 900;
+            cursor: pointer; width: 100%; margin-top: 10px; transition: 0.1s;
+        }
+        .btn-3d:active { border-bottom-width: 0px; transform: translateY(5px); }
+        .btn-green { background-color: var(--c1); border-bottom-color: var(--c1-d); }
+        .btn-red { background-color: var(--c3); border-bottom-color: var(--c3-d); }
+        .btn-purple { background-color: #9C27B0; border-bottom-color: #7B1FA2; }
+
+        #drop-zone { border: 4px dashed #E5E5E5; border-radius: 16px; padding: 40px 20px; cursor: pointer; margin-bottom: 15px; background: #FAFAFA; transition: background 0.3s, border-color 0.3s;}
+        body.dark-mode #drop-zone { background: #2a2a2a; border-color: #444; }
+
+        .loader {
+            width: 50px; height: 50px; border: 6px solid #E5E5E5;
+            border-top: 6px solid var(--c1); border-radius: 50%;
+            animation: spin 1s linear infinite; margin: 0 auto 20px auto;
+        }
+        body.dark-mode .loader { border-color: #333; border-top-color: var(--c1); }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Settings Elements */
+        #settings-btn {
+            position: absolute; top: 20px; right: 20px; z-index: 100;
+            background: white; border: 3px solid #E5E5E5; border-radius: 50%;
+            width: 55px; height: 55px; font-size: 26px; cursor: pointer;
+            box-shadow: 0 4px 0 #E5E5E5; display: flex; justify-content: center; align-items: center;
+            transition: 0.1s;
+        }
+        #settings-btn:active { box-shadow: 0 0px 0 #E5E5E5; transform: translateY(4px); }
+        body.dark-mode #settings-btn { background: #1e1e1e; border-color: #333; box-shadow: 0 4px 0 #333; }
+        body.dark-mode #settings-btn:active { box-shadow: 0 0px 0 #333; }
+
+        #settings-modal {
+            display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.6); z-index: 200; justify-content: center; align-items: center;
+        }
+        #settings-modal.active { display: flex; }
+        .toggle-row { display: flex; justify-content: space-between; align-items: center; margin: 15px 0; font-size: 18px; font-weight: bold; }
+        input[type="checkbox"] { width: 24px; height: 24px; cursor: pointer; accent-color: var(--c1); }
+
+        /* =========================================
+           GAMEPLAY TRACK & HUD
+           ========================================= */
+        #game-ui { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 5; display: flex; flex-direction: column; }
+        
+        .hud { padding: 20px; display: flex; justify-content: space-between; z-index: 10; font-weight: 900; font-size: 24px; }
+        .score-box { background: white; border: 3px solid #E5E5E5; border-radius: 16px; padding: 10px 20px; color: var(--c0); box-shadow: 0 4px 0 #E5E5E5; transition: background 0.3s, border-color 0.3s;}
+        body.dark-mode .score-box { background: #1e1e1e; border-color: #333; box-shadow: 0 4px 0 #333; }
+        
+        .hp-bar { width: 150px; height: 25px; background: #E5E5E5; border-radius: 12px; border: 3px solid white; box-shadow: 0 4px 0 #E5E5E5; overflow: hidden; transition: border-color 0.3s, background 0.3s;}
+        body.dark-mode .hp-bar { background: #333; border-color: #1e1e1e; box-shadow: 0 4px 0 #111; }
+        .hp-fill { width: 100%; height: 100%; background: var(--c1); transition: 0.3s; }
+
+        #track { flex-grow: 1; display: flex; justify-content: center; width: 100%; max-width: 500px; margin: 0 auto; position: relative; }
+        .lane { flex: 1; position: relative; border-left: 2px dashed rgba(0,0,0,0.05); }
+        body.dark-mode .lane { border-left: 2px dashed rgba(255,255,255,0.05); }
+        .lane:last-child { border-right: 2px dashed rgba(0,0,0,0.05); }
+        body.dark-mode .lane:last-child { border-right: 2px dashed rgba(255,255,255,0.05); }
+
+        /* Receptors (Bottom Buttons) */
+        .receptor {
+            position: absolute; bottom: var(--hit-zone); left: 50%; transform: translateX(-50%);
+            width: var(--note-size); height: var(--note-size); border-radius: 16px;
+            background: white; border: 4px solid #E5E5E5; box-shadow: 0 6px 0 #E5E5E5;
+            display: flex; justify-content: center; align-items: center; z-index: 10;
+            transition: background 0.3s, border-color 0.3s;
+        }
+        body.dark-mode .receptor { background: #1e1e1e; border-color: #333; box-shadow: 0 6px 0 #333; }
+        
+        /* Default receptor arrows are slightly faded */
+        .receptor svg { width: 50%; height: 50%; fill: #C5C5C5; transition: 0.1s; }
+        body.dark-mode .receptor svg { fill: #555; }
+        
+        /* Active States for Receptors */
+        .lane-0 .receptor.active { background: var(--c0) !important; border-color: var(--c0) !important; box-shadow: 0 0px 0 transparent !important; transform: translateX(-50%) translateY(6px); }
+        .lane-1 .receptor.active { background: var(--c1) !important; border-color: var(--c1) !important; box-shadow: 0 0px 0 transparent !important; transform: translateX(-50%) translateY(6px); }
+        .lane-2 .receptor.active { background: var(--c2) !important; border-color: var(--c2) !important; box-shadow: 0 0px 0 transparent !important; transform: translateX(-50%) translateY(6px); }
+        .lane-3 .receptor.active { background: var(--c3) !important; border-color: var(--c3) !important; box-shadow: 0 0px 0 transparent !important; transform: translateX(-50%) translateY(6px); }
+        .receptor.active svg { fill: white !important; }
+
+        /* Falling Notes */
+        .note {
+            position: absolute; left: 50%; width: var(--note-size); height: var(--note-size);
+            margin-left: calc(var(--note-size) / -2); border-radius: 16px;
+            display: flex; justify-content: center; align-items: center; z-index: 8;
+            will-change: transform;
+        }
+        .note svg { width: 50%; height: 50%; fill: white; }
+        
+        .note.l0 { background: var(--c0); box-shadow: 0 6px 0 var(--c0-d); }
+        .note.l1 { background: var(--c1); box-shadow: 0 6px 0 var(--c1-d); }
+        .note.l2 { background: var(--c2); box-shadow: 0 6px 0 var(--c2-d); }
+        .note.l3 { background: var(--c3); box-shadow: 0 6px 0 var(--c3-d); }
+
+        /* Rotations: Left, Down, Up, Right */
+        .lane-0 svg { transform: rotate(-90deg); }
+        .lane-1 svg { transform: rotate(180deg); }
+        .lane-2 svg { transform: rotate(0deg); }
+        .lane-3 svg { transform: rotate(90deg); }
+
+        /* Judgement Text */
+        #judgement-txt {
+            position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%);
+            font-size: 50px; font-weight: 900; opacity: 0; pointer-events: none; text-transform: uppercase; z-index: 100;
+        }
+        @keyframes popOut { 0% { transform: translate(-50%, -50%) scale(0.5); opacity:1; } 50% { transform: translate(-50%, -80%) scale(1.2); opacity:1;} 100% { transform: translate(-50%, -100%) scale(1); opacity:0; } }
+
+        .touch-zone { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 50; }
+    </style>
+</head>
+<body>
+
+    <div id="bg-grid"></div>
+    <canvas id="vfx-canvas"></canvas>
+
+    <!-- Base SVG Arrow -->
+    <svg style="display: none;">
+        <symbol id="arrow" viewBox="0 0 24 24">
+            <path d="M12 2L12 22M12 2L5 9M12 2L19 9" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+        </symbol>
+    </svg>
+
+    <!-- SETTINGS BUTTON -->
+    <button id="settings-btn" onclick="toggleSettings()">⚙️</button>
+
+    <!-- SETTINGS MODAL -->
+    <div id="settings-modal">
+        <div class="card">
+            <h2 style="margin-bottom: 20px; color: var(--c0);">الإعدادات</h2>
+            <div class="toggle-row">
+                <span>وضع الليل 🌙</span>
+                <input type="checkbox" id="theme-toggle" onchange="toggleTheme(this)">
+            </div>
+            <div class="toggle-row">
+                <span>صوت النقر 🎵</span>
+                <input type="checkbox" id="sound-toggle" onchange="toggleHitSound(this)">
+            </div>
+            <button class="btn-3d btn-green" onclick="toggleSettings()" style="margin-top: 20px;">إغلاق</button>
+        </div>
+    </div>
+
+    <!-- UPLOAD SCREEN -->
+    <div id="screen-upload" class="screen active">
+        <div class="card">
+            <h1 style="color: var(--c0); margin-bottom: 20px;">العب الموسيقى!</h1>
+            <div id="drop-zone" onclick="document.getElementById('file-input').click()">
+                <h1 style="font-size: 50px; margin-bottom: 10px;">🎵</h1>
+                <h3>اضغط لاختيار أغنية</h3>
+                <input type="file" id="file-input" accept="audio/*" style="display:none;">
+            </div>
+            <p id="file-name" style="font-weight: 900; color: var(--c1);"></p>
+        </div>
+    </div>
+
+    <!-- DIFFICULTY SCREEN -->
+    <div id="screen-diff" class="screen">
+        <div class="card">
+            <h2 style="margin-bottom: 15px;">اختر الصعوبة</h2>
+            <button class="btn-3d btn-green" onclick="startGameProcess('EASY')">سهل (كثير من الأخطاء مسموح)</button>
+            <button class="btn-3d" style="background:var(--c2); border-color:var(--c2-d);" onclick="startGameProcess('NORMAL')">متوسط (إيقاع ممتع)</button>
+            <button class="btn-3d btn-red" onclick="startGameProcess('HARD')">صعب (تحدي حقيقي)</button>
+            <button class="btn-3d btn-purple" onclick="startGameProcess('VERY_HARD')">صعب جداً (تحدي جنوني)</button>
+        </div>
+    </div>
+
+    <!-- LOADING SCREEN -->
+    <div id="screen-loading" class="screen">
+        <div class="card">
+            <div class="loader"></div>
+            <h2>جاري صنع الأسهم...</h2>
+            <p style="color: gray; margin-top: 10px;">نقرأ ذبذبات الصوت ⚙️</p>
+        </div>
+    </div>
+
+    <!-- GAMEPLAY SCREEN -->
+    <div id="screen-game" class="screen" style="background: transparent;">
+        <div id="game-ui">
+            <div class="hud">
+                <div class="score-box" id="ui-score">0</div>
+                <div class="hp-bar"><div class="hp-fill" id="ui-hp"></div></div>
+            </div>
+            <div id="judgement-txt">PERFECT</div>
+            <div id="track">
+                <!-- Lanes generated via JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- RESULTS SCREEN -->
+    <div id="screen-results" class="screen">
+        <div class="card">
+            <h1 style="color: var(--c2); margin-bottom: 20px;">النتائج</h1>
+            <h1 style="font-size: 80px; margin-bottom: 10px;" id="res-grade">S</h1>
+            <div style="font-size: 20px; font-weight: bold;">النقاط: <span id="res-score">0</span></div>
+            <button class="btn-3d btn-green" onclick="location.reload()" style="margin-top: 30px;">تغيير الأغنية</button>
+        </div>
+    </div>
+
+    <script>
+        // =========================================
+        // CONFIGURATION & AUDIO STATE
+        // =========================================
+        const DIFFS = {
+            'EASY':      { speed: 500, multiplier: 1.5, window: 0.18 },
+            'NORMAL':    { speed: 800, multiplier: 1.0, window: 0.15 },
+            'HARD':      { speed: 1200, multiplier: 0.7, window: 0.10 },
+            'VERY_HARD': { speed: 1600, multiplier: 0.35, window: 0.08 } // أسرع وبأزرار أكثر
+        };
+        const COLORS =['var(--c0)', 'var(--c1)', 'var(--c2)', 'var(--c3)'];
+        const KEYS = { 'ArrowLeft': 0, 'a': 0, 'ArrowDown': 1, 's': 1, 'ArrowUp': 2, 'w': 2, 'ArrowRight': 3, 'd': 3 };
+        
+        let audioCtx, mainAudioBuffer, sourceNode, filterNode, gainNode;
+        let currentFile, activeDiff;
+        let beatMap =[];
+        let hitZonePx = 0;
+        let startTime = 0;
+        let gameState = 'idle';
+        let stats = { score: 0, combo: 0, hp: 100 };
+        
+        // إعدادات اللاعب
+        let hitSoundEnabled = false; // مغلق افتراضيا لعدم الإزعاج
+
+        const canvas = document.getElementById('vfx-canvas');
+        const ctx = canvas.getContext('2d');
+        let particles =[];
+
+        // =========================================
+        // UI HELPERS & SETTINGS
+        // =========================================
+        function showScreen(id) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById('screen-' + id).classList.add('active');
+        }
+
+        function toggleSettings() {
+            const modal = document.getElementById('settings-modal');
+            modal.classList.toggle('active');
+        }
+
+        function toggleTheme(checkbox) {
+            if(checkbox.checked) {
+                document.body.classList.add('dark-mode');
+            } else {
+                document.body.classList.remove('dark-mode');
+            }
+        }
+
+        function toggleHitSound(checkbox) {
+            hitSoundEnabled = checkbox.checked;
+        }
+
+        document.getElementById('file-input').onchange = (e) => {
+            if (e.target.files[0]) {
+                currentFile = e.target.files[0];
+                document.getElementById('file-name').innerText = currentFile.name;
+                setTimeout(() => showScreen('diff'), 500);
+            }
+        };
+
+        window.onresize = () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            // Calculate Hit Zone precisely
+            const bottomPercent = 15; // --hit-zone
+            const noteSize = window.innerWidth <= 600 ? 65 : 70;
+            hitZonePx = window.innerHeight * (1 - (bottomPercent / 100)) - (noteSize / 2);
+        };
+        window.onresize();
+
+        // =========================================
+        // ADVANCED AUDIO ENGINE (SYNTH + MUSIC MUFFLE)
+        // =========================================
+        function initAudioEngine() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+        }
+
+        function playStrongSynth(lane) {
+            if (!audioCtx) return;
+            const t = audioCtx.currentTime;
+            
+            // تشغيل صوت النقر فقط إذا كان مفعلاً من الإعدادات
+            if (hitSoundEnabled) {
+                const osc1 = audioCtx.createOscillator();
+                const osc2 = audioCtx.createOscillator();
+                const synthGain = audioCtx.createGain();
+                
+                // Frequencies for lanes (C5, E5, G5, C6)
+                const freqs =[523.25, 659.25, 783.99, 1046.50]; 
+                
+                osc1.type = 'square';
+                osc1.frequency.setValueAtTime(freqs[lane], t);
+                
+                osc2.type = 'sine';
+                osc2.frequency.setValueAtTime(freqs[lane] * 2, t); // Octave higher
+
+                // Envelope (Punchy ADSR)
+                synthGain.gain.setValueAtTime(0, t);
+                synthGain.gain.linearRampToValueAtTime(0.5, t + 0.02); // Quick attack
+                synthGain.gain.exponentialRampToValueAtTime(0.01, t + 0.3); // Decay
+
+                osc1.connect(synthGain);
+                osc2.connect(synthGain);
+                synthGain.connect(audioCtx.destination);
+                
+                osc1.start(t); osc2.start(t);
+                osc1.stop(t + 0.3); osc2.stop(t + 0.3);
+            }
+
+            // Restore Main Song Audio (يتم إرجاع صوت الأغنية الطبيعي دائماً عند النقر الصحيح)
+            if(filterNode && gainNode) {
+                filterNode.frequency.setTargetAtTime(20000, t, 0.05); // Open filter (Clear)
+                gainNode.gain.setTargetAtTime(1.0, t, 0.05); // Full volume
+            }
+        }
+
+        function muffleSong() {
+            if (!audioCtx || !filterNode || !gainNode) return;
+            const t = audioCtx.currentTime;
+            // If missed, song becomes muffled and slightly quieter
+            filterNode.frequency.setTargetAtTime(800, t, 0.1); 
+            gainNode.gain.setTargetAtTime(0.5, t, 0.1); 
+        }
+
+        // =========================================
+        // FOOLPROOF BEATMAP ALGORITHM
+        // =========================================
+        async function startGameProcess(diff) {
+            activeDiff = DIFFS[diff];
+            initAudioEngine();
+            showScreen('loading');
+
+            const arrayBuffer = await currentFile.arrayBuffer();
+            mainAudioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+            
+            generateNotes(mainAudioBuffer, diff);
+            setupTrack();
+            launchGame();
+        }
+
+        function generateNotes(buffer, diffName) {
+            beatMap =[];
+            const data = buffer.getChannelData(0);
+            const sr = buffer.sampleRate;
+            const chunkSize = Math.floor(sr * 0.1); // 100ms chunks
+            
+            let energies =[];
+            let totalEnergy = 0;
+
+            for (let i = 0; i < data.length; i += chunkSize) {
+                let sum = 0;
+                for (let j = 0; j < chunkSize && i + j < data.length; j++) sum += Math.abs(data[i + j]);
+                const e = sum / chunkSize;
+                energies.push(e);
+                totalEnergy += e;
+            }
+
+            const avgEnergy = totalEnergy / energies.length;
+            const threshold = avgEnergy * activeDiff.multiplier;
+
+            let laneBag =[0, 1, 2, 3];
+            let lastNoteTime = -1;
+
+            // 1. Detect peaks based on energy
+            for (let i = 1; i < energies.length; i++) {
+                const time = (i * chunkSize) / sr;
+                
+                // If there's an energy spike OR if too much time passed (fallback to ensure notes)
+                if ((energies[i] > threshold && energies[i] > energies[i-1]) || (time - lastNoteTime > 2.0)) {
+                    // Prevent notes from being too close together
+                    if (time - lastNoteTime > 0.2) {
+                        if (laneBag.length === 0) laneBag =[0, 1, 2, 3].sort(() => Math.random() - 0.5);
+                        beatMap.push({ time: time, lane: laneBag.pop(), hit: false, missed: false, el: null });
+                        lastNoteTime = time;
+                    }
+                }
+            }
+        }
+
+        // =========================================
+        // RENDERING & TRACK SETUP
+        // =========================================
+        function setupTrack() {
+            const track = document.getElementById('track');
+            track.innerHTML = '';
+            for (let i = 0; i < 4; i++) {
+                const lane = document.createElement('div');
+                lane.className = `lane lane-${i}`;
+                
+                // Static Receptors
+                const receptor = document.createElement('div');
+                receptor.className = 'receptor';
+                receptor.id = `receptor-${i}`;
+                receptor.innerHTML = `<svg><use href="#arrow"></use></svg>`;
+                lane.appendChild(receptor);
+
+                // Touch zones
+                const tz = document.createElement('div');
+                tz.className = 'touch-zone';
+                tz.addEventListener('touchstart', (e) => { e.preventDefault(); pressLane(i); });
+                tz.addEventListener('mousedown', (e) => { e.preventDefault(); pressLane(i); });
+                tz.addEventListener('touchend', (e) => { e.preventDefault(); releaseLane(i); });
+                tz.addEventListener('mouseup', (e) => { e.preventDefault(); releaseLane(i); });
+                lane.appendChild(tz);
+
+                track.appendChild(lane);
+            }
+        }
+
+        function launchGame() {
+            document.getElementById('settings-btn').style.display = 'none'; // إخفاء الإعدادات أثناء اللعب
+            stats = { score: 0, combo: 0, hp: 100 };
+            updateHUD();
+            showScreen('game');
+
+            // Setup Audio Graph: Source -> Filter -> Gain -> Destination
+            sourceNode = audioCtx.createBufferSource();
+            sourceNode.buffer = mainAudioBuffer;
+            
+            filterNode = audioCtx.createBiquadFilter();
+            filterNode.type = 'lowpass';
+            filterNode.frequency.value = 20000; // Open by default
+            
+            gainNode = audioCtx.createGain();
+            gainNode.gain.value = 1.0;
+
+            sourceNode.connect(filterNode);
+            filterNode.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            startTime = audioCtx.currentTime;
+            sourceNode.start(0);
+            sourceNode.onended = () => { if (gameState === 'playing') showResults(); };
+            
+            gameState = 'playing';
+            requestAnimationFrame(gameLoop);
+        }
+
+        function gameLoop() {
+            if (gameState !== 'playing') return;
+            const curTime = audioCtx.currentTime - startTime;
+            
+            beatMap.forEach(note => {
+                if (note.hit || note.missed) return;
+                const timeDiff = note.time - curTime;
+                
+                // Spawn note if within screen range (approx 2 seconds ahead)
+                if (timeDiff < 2.0 && timeDiff > -1) {
+                    if (!note.el) {
+                        note.el = document.createElement('div');
+                        note.el.className = `note l${note.lane} lane-${note.lane}`;
+                        note.el.innerHTML = `<svg><use href="#arrow"></use></svg>`;
+                        document.querySelector(`.lane-${note.lane}`).appendChild(note.el);
+                    }
+                    
+                    // Move note mathematically
+                    const yPos = hitZonePx - (timeDiff * activeDiff.speed);
+                    note.el.style.transform = `translateY(${yPos}px)`;
+                }
+
+                // Miss Detection
+                if (timeDiff < -activeDiff.window && !note.hit) {
+                    note.missed = true;
+                    if (note.el) note.el.remove();
+                    registerMiss();
+                }
+            });
+
+            drawVFX();
+            
+            if (stats.hp <= 0) {
+                sourceNode.stop();
+                showResults();
+                return;
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // =========================================
+        // INPUT & HIT DETECTION
+        // =========================================
+        window.addEventListener('keydown', e => { if (!e.repeat && KEYS[e.key] !== undefined) pressLane(KEYS[e.key]); });
+        window.addEventListener('keyup', e => { if (KEYS[e.key] !== undefined) releaseLane(KEYS[e.key]); });
+
+        function pressLane(lane) {
+            if (gameState !== 'playing') return;
+            const receptor = document.getElementById(`receptor-${lane}`);
+            receptor.classList.add('active');
+
+            const curTime = audioCtx.currentTime - startTime;
+            
+            // Find closest unhit note in this lane
+            let target = beatMap.filter(n => n.lane === lane && !n.hit && !n.missed)
+                                .sort((a, b) => Math.abs(a.time - curTime) - Math.abs(b.time - curTime))[0];
+
+            if (target && Math.abs(target.time - curTime) <= activeDiff.window) {
+                // HIT!
+                target.hit = true;
+                target.el.remove();
+                
+                const accuracy = Math.abs(target.time - curTime);
+                const judgement = accuracy < 0.05 ? 'PERFECT' : 'GOOD';
+                
+                stats.score += judgement === 'PERFECT' ? 100 : 50;
+                stats.combo++;
+                stats.hp = Math.min(100, stats.hp + 2);
+                
+                playStrongSynth(lane); // Synth & Music Restore
+                spawnParticles(lane);
+                showJudgement(judgement, judgement === 'PERFECT' ? COLORS[2] : COLORS[1]);
+                updateHUD();
+            } else {
+                // Empty tap logic (optional: can penalize, but leaving it forgiving for now)
+            }
+        }
+
+        function releaseLane(lane) {
+            document.getElementById(`receptor-${lane}`).classList.remove('active');
+        }
+
+        function registerMiss() {
+            stats.combo = 0;
+            stats.hp -= 5;
+            muffleSong(); // Music gets muffled
+            showJudgement('MISS', COLORS[3]);
+            updateHUD();
+            
+            // Screen shake
+            document.body.style.transform = 'translate(-5px, 5px)';
+            setTimeout(() => document.body.style.transform = 'translate(0, 0)', 50);
+        }
+
+        function updateHUD() {
+            document.getElementById('ui-score').innerText = stats.score;
+            const hpFill = document.getElementById('ui-hp');
+            hpFill.style.width = `${stats.hp}%`;
+            hpFill.style.backgroundColor = stats.hp > 40 ? 'var(--c1)' : (stats.hp > 20 ? 'var(--c2)' : 'var(--c3)');
+        }
+
+        function showJudgement(text, color) {
+            const el = document.getElementById('judgement-txt');
+            el.innerText = text; el.style.color = color;
+            el.style.textShadow = `0 5px 0 rgba(0,0,0,0.2)`;
+            el.style.animation = 'none'; void el.offsetWidth;
+            el.style.animation = 'popOut 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards';
+        }
+
+        // =========================================
+        // VFX PARTICLES
+        // =========================================
+        function spawnParticles(lane) {
+            const rec = document.getElementById(`receptor-${lane}`).getBoundingClientRect();
+            const x = rec.left + rec.width / 2;
+            const y = rec.top + rec.height / 2;
+            const colorValue = getComputedStyle(document.body).getPropertyValue(`--c${lane}`).trim();
+            
+            for (let i = 0; i < 15; i++) {
+                particles.push({
+                    x, y,
+                    vx: (Math.random() - 0.5) * 20,
+                    vy: (Math.random() - 0.5) * 20 - 5,
+                    life: 1.0, color: colorValue, size: Math.random() * 8 + 4
+                });
+            }
+        }
+
+        function drawVFX() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            for (let i = particles.length - 1; i >= 0; i--) {
+                let p = particles[i];
+                p.x += p.vx; p.y += p.vy; p.vy += 0.8; p.life -= 0.05;
+                if (p.life <= 0) { particles.splice(i, 1); continue; }
+                ctx.fillStyle = p.color; ctx.globalAlpha = p.life;
+                ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill();
+            }
+            ctx.globalAlpha = 1.0;
+        }
+
+        // =========================================
+        // RESULTS
+        // =========================================
+        function showResults() {
+            gameState = 'results';
+            document.getElementById('settings-btn').style.display = 'flex'; // إظهار زر الإعدادات مجدداً
+            document.getElementById('res-score').innerText = stats.score;
+            
+            const gradeEl = document.getElementById('res-grade');
+            if (stats.hp > 80) { gradeEl.innerText = 'S'; gradeEl.style.color = 'var(--c1)'; }
+            else if (stats.hp > 50) { gradeEl.innerText = 'A'; gradeEl.style.color = 'var(--c0)'; }
+            else if (stats.hp > 0) { gradeEl.innerText = 'B'; gradeEl.style.color = 'var(--c2)'; }
+            else { gradeEl.innerText = 'FAIL'; gradeEl.style.color = 'var(--c3)'; }
+
+            showScreen('results');
+        }
+    </script>
+</body>
+</html>
